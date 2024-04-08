@@ -51,6 +51,7 @@ function init() {
 }
 
 // Player launcher object with three guns
+// Player launcher object with three guns
 const playerLauncher = {
     guns: [], // This will be populated in the init function
     fire: (targetX, targetY) => {
@@ -59,18 +60,22 @@ const playerLauncher = {
             return (Math.abs(curr.x - targetX) < Math.abs(prev.x - targetX) ? curr : prev);
         });
 
+        // Adjust the origin y-coordinate for the missile by subtracting the offset
+        const missileOriginY = closestGun.y + 110;
+
         // Calculate trajectory and fire missile
-        const angle = Math.atan2(targetY - closestGun.y, targetX - closestGun.x);
+        const angle = Math.atan2(targetY - missileOriginY, targetX - closestGun.x);
         const speed = 5;
         const missile = {
             x: closestGun.x,
-            y: closestGun.y,
+            y: missileOriginY,
             vx: Math.cos(angle) * speed,
             vy: Math.sin(angle) * speed
         };
         playerMissiles.push(missile);
     }
 };
+
 
 // Generate enemy missile targeting a random city
 function generateEnemyMissile() {
@@ -153,23 +158,56 @@ function checkCollisions() {
         });
     });
 }
+function drawMissileShape(missile, type) {
+    // Base angle for the missile's orientation
+    let baseAngle = type === 'enemy' ?
+        Math.atan2(missile.targetY - missile.y, missile.targetX - missile.x) :
+        Math.atan2(missile.vy, missile.vx);
 
-// Render functions
+    // Rotate the missile by 90 degrees from its base orientation
+    let angle = baseAngle + Math.PI / 2;
+
+    ctx.save();
+    ctx.translate(missile.x, missile.y);
+    ctx.rotate(angle);
+
+    // Missile dimensions and style
+    const missileLength = 20;
+    const missileWidth = 8; // For a more oval shape
+    const finThickness = missileWidth; // Four times the previous fin width
+
+    // Set the missile color
+    ctx.fillStyle = type === 'player' ? '#007bff' : '#dc3545';
+
+    // Draw the oval-shaped missile body
+    ctx.beginPath();
+    ctx.ellipse(0, -missileLength / 2, missileWidth / 2, missileLength / 2, 0, 0, 2 * Math.PI);
+    ctx.fill();
+
+    // Draw reversed, thicker shark-fin-like tail fins
+    ctx.beginPath();
+    ctx.moveTo(-finThickness / 2, -missileLength / 3); // Start at the upper part of the missile
+    ctx.lineTo(-finThickness, 0); // Left fin bottom
+    ctx.lineTo(0, -missileLength / 6); // Center top point of the fins
+    ctx.lineTo(finThickness, 0); // Right fin bottom
+    ctx.lineTo(finThickness / 2, -missileLength / 3); // Back to the upper part
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.restore();
+}
+
 function drawMissiles() {
-    ctx.fillStyle = 'red';
-    playerMissiles.forEach(missile => {
-        ctx.beginPath();
-        ctx.arc(missile.x, missile.y, 2, 0, 2 * Math.PI);
-        ctx.fill();
+    missiles.forEach(missile => {
+        drawMissileShape(missile, 'enemy');
     });
 
-    ctx.fillStyle = 'green';
-    missiles.forEach(missile => {
-        ctx.beginPath();
-        ctx.arc(missile.x, missile.y, 2, 0, 2 * Math.PI);
-        ctx.fill();
+    playerMissiles.forEach(missile => {
+        drawMissileShape(missile, 'player');
     });
 }
+
+
 
 function drawCities() {
     const cityWidth = 30;
@@ -202,26 +240,36 @@ function drawGround() {
 }
 
 function drawPlayerGuns() {
-    const gunWidth = 15;
-    const gunHeight = 30;
-    const hillBaseHeight = 50; // Base height of the hill from the ground
-    const hillPeakHeight = gunHeight * 6; // Making the hill six times as tall as the guns
+    const hillWidth = 80; // The overall width of the hill
+    const hillHeight = 60; // The height of the hill
+    const hillColor = 'green'; // Color of the hill
+    const groundLevel = canvas.height - 50; // Ground level
+
+    const turretBaseRadius = 15; // Radius of the circular turret base
+    const turretBarrelWidth = 10;
+    const turretBarrelHeight = 10;
+    const turretColor = '#FFD700'; // Color for the gun turret
 
     playerLauncher.guns.forEach(gun => {
         // Draw hill
-        ctx.fillStyle = 'green'; // Color for the hill
+        ctx.fillStyle = hillColor;
         ctx.beginPath();
-        ctx.moveTo(gun.x - gunWidth * 3, canvas.height - hillBaseHeight); // Start at left base of hill
-        ctx.quadraticCurveTo(gun.x, canvas.height - hillPeakHeight, gun.x + gunWidth * 3, canvas.height - hillBaseHeight); // Peak at gun position and down to right base
-        ctx.closePath();
+        ctx.moveTo(gun.x - hillWidth / 2, groundLevel);
+        ctx.quadraticCurveTo(gun.x, groundLevel - hillHeight, gun.x + hillWidth / 2, groundLevel);
+        ctx.lineTo(gun.x - hillWidth / 2, groundLevel);
         ctx.fill();
 
-        // Draw gun on top of hill
-        ctx.fillStyle = '#FFD700'; // Color for the gun
-        ctx.fillRect(gun.x - gunWidth / 2, canvas.height - hillPeakHeight/2 - gunHeight -22, gunWidth, gunHeight);
+        // Draw the circular base of the turret
+        ctx.fillStyle = turretColor;
+        ctx.beginPath();
+        ctx.arc(gun.x, groundLevel - hillHeight + 25, turretBaseRadius, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Draw gun barrel
+        ctx.fillStyle = turretColor;
+        ctx.fillRect(gun.x - turretBarrelWidth / 2, groundLevel - hillHeight - turretBarrelHeight, turretBarrelWidth, turretBarrelHeight + 25);
     });
 }
-
 
 // Initialize and start the game loop
 window.onload = function() {
