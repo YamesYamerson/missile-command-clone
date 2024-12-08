@@ -153,24 +153,6 @@ const playerLauncher = {
   },
 };
 
-// Update the click event to use the updated firing logic
-canvas.addEventListener("click", (event) => {
-    const rect = canvas.getBoundingClientRect();
-    const x = event.clientX - rect.left;
-    const y = event.clientY - rect.top;
-  
-    playerLauncher.fire(x, y);
-  });
-  
-// Update the click event to use the updated firing logic
-canvas.addEventListener("click", (event) => {
-  const rect = canvas.getBoundingClientRect();
-  const x = event.clientX - rect.left;
-  const y = event.clientY - rect.top;
-
-  playerLauncher.fire(x, y); // Fire the missile
-});
-
 function generateEnemyMissile() {
   const groundLevelY = canvas.height - GROUND_HEIGHT; // Y-coordinate of the ground level
   const totalTargets = cities.length + 3; // Assuming 3 turrets to start with
