@@ -1,18 +1,12 @@
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
-
-// Game configuration constants
-const NUM_CITIES = 6;
-const CITY_WIDTH = 30;
-const GUN_EDGE_OFFSET = 50;
-const GROUND_HEIGHT = 50;
-const HILL_BASE_HEIGHT = 50;
-const HILL_PEAK_HEIGHT = HILL_BASE_HEIGHT * 6; // Adjust based on the gun height
+import * as Constants from './src/config/constants.js';
 
 // Game variables
 let cities = [];
 let missiles = [];
 let playerMissiles = [];
+let enemyLines = []; // Array to store active enemy lines
 let explosions = [];
 let gameOver = false;
 let playerHealth = 100; // Player health starts at 100
@@ -61,45 +55,70 @@ function decreasePlayerHealth() {
 
 // Fix the init function
 function init() {
-    // Set up playerLauncher guns
-    playerLauncher.guns = [
-      { x: GUN_EDGE_OFFSET, y: canvas.height - HILL_PEAK_HEIGHT, silo: "left" },
-      { x: canvas.width / 2, y: canvas.height - HILL_PEAK_HEIGHT, silo: "center" },
-      {
-        x: canvas.width - GUN_EDGE_OFFSET,
-        y: canvas.height - HILL_PEAK_HEIGHT,
-        silo: "right",
-      },
-    ];
-  
-    // Set up cities
-    const spaceBetweenGuns = playerLauncher.guns[1].x - playerLauncher.guns[0].x;
-    const gap =
-      (spaceBetweenGuns - CITY_WIDTH * (NUM_CITIES / 2)) / (NUM_CITIES / 2 + 1);
-  
-    cities = [];
-    for (let i = 0; i < NUM_CITIES / 2; i++) {
-      cities.push({
-        x: playerLauncher.guns[0].x + gap * (i + 1) + CITY_WIDTH * i,
-        y: canvas.height - GROUND_HEIGHT,
-      });
-    }
-    for (let i = 0; i < NUM_CITIES / 2; i++) {
-      cities.push({
-        x: playerLauncher.guns[1].x + gap * (i + 1) + CITY_WIDTH * i,
-        y: canvas.height - GROUND_HEIGHT,
-      });
-    }
-  
-    // Update total missiles remaining
-    playerMissilesRemaining =
-      siloMissiles.left + siloMissiles.center + siloMissiles.right;
-  
-    // Set up enemy missile generation
-    setInterval(generateEnemyMissile, 2000);
+  // Set up playerLauncher guns
+  playerLauncher.guns = [
+    { x: Constants.GUN_EDGE_OFFSET, y: canvas.height - Constants.HILL_PEAK_HEIGHT, silo: "left" },
+    {
+      x: canvas.width / 2,
+      y: canvas.height - Constants.HILL_PEAK_HEIGHT,
+      silo: "center",
+    },
+    {
+      x: canvas.width - Constants.GUN_EDGE_OFFSET,
+      y: canvas.height - Constants.HILL_PEAK_HEIGHT,
+      silo: "right",
+    },
+  ];
+
+  // Set up cities
+  const spaceBetweenGuns = playerLauncher.guns[1].x - playerLauncher.guns[0].x;
+  const gap =
+    (spaceBetweenGuns - Constants.CITY_WIDTH * (Constants.NUM_CITIES / 2)) / (Constants.NUM_CITIES / 2 + 1);
+
+  cities = [];
+  for (let i = 0; i < Constants.NUM_CITIES / 2; i++) {
+    cities.push({
+      x: playerLauncher.guns[0].x + gap * (i + 1) + Constants.CITY_WIDTH * i,
+      y: canvas.height - Constants.GROUND_HEIGHT,
+    });
+  }
+  for (let i = 0; i < Constants.NUM_CITIES / 2; i++) {
+    cities.push({
+      x: playerLauncher.guns[1].x + gap * (i + 1) + Constants.CITY_WIDTH * i,
+      y: canvas.height - Constants.GROUND_HEIGHT,
+    });
   }
 
-// Player launcher logic
+  // Update total missiles remaining
+  playerMissilesRemaining =
+    siloMissiles.left + siloMissiles.center + siloMissiles.right;
+
+  // Set up enemy missile generation
+  setInterval(generateEnemyMissile, 2000);
+}
+
+function checkCollisions() {
+  explosions.forEach((explosion) => {
+    missiles.forEach((missile, i) => {
+      if (
+        Math.hypot(explosion.x - missile.x, explosion.y - missile.y) <=
+        explosion.radius
+      ) {
+        missiles.splice(i, 1);
+      }
+    });
+
+    playerMissiles.forEach((missile, i) => {
+      if (
+        Math.hypot(explosion.x - missile.x, explosion.y - missile.y) <=
+        explosion.radius
+      ) {
+        playerMissiles.splice(i, 1);
+      }
+    });
+  });
+}
+
 const playerLauncher = {
   guns: [],
   fire: (targetX, targetY) => {
@@ -111,14 +130,7 @@ const playerLauncher = {
     });
 
     // Determine which silo corresponds to the closest gun
-    let silo = "";
-    if (closestGun === playerLauncher.guns[0]) {
-      silo = "left";
-    } else if (closestGun === playerLauncher.guns[1]) {
-      silo = "center";
-    } else if (closestGun === playerLauncher.guns[2]) {
-      silo = "right";
-    }
+    const silo = closestGun.silo;
 
     // Check if the silo has missiles
     if (siloMissiles[silo] > 0) {
@@ -128,23 +140,32 @@ const playerLauncher = {
       playerMissilesRemaining =
         siloMissiles.left + siloMissiles.center + siloMissiles.right;
 
-      const missileOriginY = closestGun.y + 110;
+      // Calculate the missile origin (top of the silo)
+      const missileOriginX = closestGun.x; // Center of the silo
+      const missileOriginY = closestGun.y; // Slightly above the gun position
 
       const angle = Math.atan2(
         targetY - missileOriginY,
-        targetX - closestGun.x
+        targetX - missileOriginX
       );
       const speed = 5;
+
+      // Create the missile
       const missile = {
-        x: closestGun.x,
+        x: missileOriginX,
         y: missileOriginY,
         vx: Math.cos(angle) * speed,
         vy: Math.sin(angle) * speed,
+        targetX,
+        targetY,
+        exploded: false,
       };
-      playerMissiles.push({ ...missile, targetX, targetY, exploded: false });
+
+      // Add the missile to the player's missile array
+      playerMissiles.push(missile);
 
       console.log(
-        `Missile fired from ${silo} silo. Remaining missiles in silo: ${siloMissiles[silo]}`
+        `Missile fired from ${silo} silo at (${missileOriginX}, ${missileOriginY}). Remaining missiles: ${siloMissiles[silo]}`
       );
       console.log(`Total missiles remaining: ${playerMissilesRemaining}`);
     } else {
@@ -154,7 +175,7 @@ const playerLauncher = {
 };
 
 function generateEnemyMissile() {
-  const groundLevelY = canvas.height - GROUND_HEIGHT; // Y-coordinate of the ground level
+  const groundLevelY = canvas.height - Constants.GROUND_HEIGHT; // Y-coordinate of the ground level
   const totalTargets = cities.length + 3; // Assuming 3 turrets to start with
   const targetIndex = Math.floor(Math.random() * totalTargets);
 
@@ -178,10 +199,10 @@ function generateEnemyMissile() {
       // If the turret is destroyed, or if we're targeting a non-existent turret, aim at the ground level
       targetX =
         gunIndex === 0
-          ? GUN_EDGE_OFFSET
+          ? Constants.GUN_EDGE_OFFSET
           : gunIndex === 1
           ? canvas.width / 2
-          : canvas.width - GUN_EDGE_OFFSET;
+          : canvas.width - Constants.GUN_EDGE_OFFSET;
       targetY = groundLevelY;
     }
   }
@@ -226,33 +247,6 @@ function render() {
   renderExplosions(); // Ensure explosions are the last element drawn
 }
 
-function renderExplosions() {
-  explosions.forEach((explosion, index) => {
-    // Ensure explosions render fully within canvas boundaries
-    const x = Math.max(
-      explosion.radius,
-      Math.min(explosion.x, canvas.width - explosion.radius)
-    );
-    const y = Math.max(
-      explosion.radius,
-      Math.min(explosion.y, canvas.height - explosion.radius)
-    );
-
-    ctx.fillStyle = "orange";
-    ctx.beginPath();
-    ctx.arc(x, y, explosion.radius, 0, 2 * Math.PI); // Draw full circle
-    ctx.fill();
-
-    // Increase explosion radius
-    explosion.radius += 2;
-
-    // Remove explosion if it exceeds max radius
-    if (explosion.radius >= explosion.maxRadius) {
-      explosions.splice(index, 1);
-    }
-  });
-}
-
 canvas.addEventListener("click", (event) => {
   const rect = canvas.getBoundingClientRect();
   const x = event.clientX - rect.left;
@@ -260,25 +254,27 @@ canvas.addEventListener("click", (event) => {
   playerLauncher.fire(x, y);
   // Update the firing logic to check remaining missiles
   // Fix the fire method
-playerLauncher.fire = (targetX, targetY) => {
+  playerLauncher.fire = (targetX, targetY) => {
     // Find the closest gun
     const closestGun = playerLauncher.guns.reduce((prev, curr) => {
-      return Math.abs(curr.x - targetX) < Math.abs(prev.x - targetX) ? curr : prev;
+      return Math.abs(curr.x - targetX) < Math.abs(prev.x - targetX)
+        ? curr
+        : prev;
     });
-  
+
     // Determine which silo corresponds to the closest gun
     let silo = closestGun.silo;
-  
+
     // Check if the silo has missiles
     if (siloMissiles[silo] > 0) {
       siloMissiles[silo]--; // Decrement the missile count for the selected silo
-  
+
       // Update the total missiles remaining
       playerMissilesRemaining =
         siloMissiles.left + siloMissiles.center + siloMissiles.right;
-  
+
       const missileOriginY = closestGun.y;
-  
+
       const angle = Math.atan2(
         targetY - missileOriginY,
         targetX - closestGun.x
@@ -291,7 +287,7 @@ playerLauncher.fire = (targetX, targetY) => {
         vy: Math.sin(angle) * speed,
       };
       playerMissiles.push({ ...missile, targetX, targetY, exploded: false });
-  
+
       console.log(
         `Missile fired from ${silo} silo. Remaining missiles in silo: ${siloMissiles[silo]}`
       );
@@ -303,7 +299,7 @@ playerLauncher.fire = (targetX, targetY) => {
 });
 
 function moveMissiles() {
-  const groundLevelY = canvas.height - GROUND_HEIGHT; // Calculate the ground level's y-coordinate
+  const groundLevelY = canvas.height - Constants.GROUND_HEIGHT; // Calculate the ground level's y-coordinate
 
   // Update enemy missiles
   for (let i = missiles.length - 1; i >= 0; i--) {
@@ -317,7 +313,7 @@ function moveMissiles() {
         x: missile.x,
         y: groundLevelY,
         radius: 0,
-        maxRadius: 100,
+        maxRadius: 70,
       });
       missiles.splice(i, 1);
       decreasePlayerHealth(); // Reduce health when a missile hits the ground
@@ -332,7 +328,7 @@ function moveMissiles() {
           x: city.x,
           y: city.y,
           radius: 0,
-          maxRadius: 100,
+          maxRadius: 70,
         });
         missiles.splice(i, 1);
         cities.splice(j, 1);
@@ -350,7 +346,7 @@ function moveMissiles() {
           x: gun.x,
           y: turretTopY,
           radius: 0,
-          maxRadius: 100,
+          maxRadius: 70,
         });
         missiles.splice(i, 1);
         playerLauncher.guns.splice(j, 1); // Remove the turret on hit
@@ -374,7 +370,7 @@ function moveMissiles() {
         x: missile.targetX,
         y: missile.targetY,
         radius: 0,
-        maxRadius: 100,
+        maxRadius: 70,
       });
     }
   });
@@ -398,53 +394,6 @@ function renderExplosions() {
     if (explosion.radius >= explosion.maxRadius) {
       explosions.splice(index, 1);
     }
-  });
-}
-
-// Ensure the missile shapes remain visually correct
-function drawMissileShape(missile, type) {
-  const angle = Math.atan2(missile.vy, missile.vx);
-
-  ctx.save();
-  ctx.translate(missile.x, missile.y);
-  ctx.rotate(angle);
-
-  const missileLength = 20;
-  const missileWidth = 8;
-
-  ctx.fillStyle = type === "player" ? "#007bff" : "#dc3545";
-  ctx.beginPath();
-  ctx.ellipse(0, 0, missileWidth / 2, missileLength / 2, 0, 0, Math.PI * 2);
-  ctx.fill();
-
-  ctx.restore();
-}
-
-// Drawing missiles with correct orientation
-function drawMissiles() {
-  missiles.forEach((missile) => drawMissileShape(missile, "enemy"));
-  playerMissiles.forEach((missile) => drawMissileShape(missile, "player"));
-}
-
-function checkCollisions() {
-  explosions.forEach((explosion) => {
-    missiles.forEach((missile, i) => {
-      if (
-        Math.hypot(explosion.x - missile.x, explosion.y - missile.y) <=
-        explosion.radius
-      ) {
-        missiles.splice(i, 1);
-      }
-    });
-
-    playerMissiles.forEach((missile, i) => {
-      if (
-        Math.hypot(explosion.x - missile.x, explosion.y - missile.y) <=
-        explosion.radius
-      ) {
-        playerMissiles.splice(i, 1);
-      }
-    });
   });
 }
 
@@ -501,9 +450,9 @@ function drawCities() {
   ctx.fillStyle = "blue";
   cities.forEach((city) => {
     ctx.fillRect(
-      city.x - CITY_WIDTH / 2,
+      city.x - Constants.CITY_WIDTH / 2,
       city.y - cityHeight,
-      CITY_WIDTH,
+      Constants.CITY_WIDTH,
       cityHeight
     );
 
@@ -511,8 +460,8 @@ function drawCities() {
     const windowWidth = 5;
     const windowHeight = 5;
     for (
-      let x = city.x - CITY_WIDTH / 2 + 5;
-      x < city.x + CITY_WIDTH / 2 - 5;
+      let x = city.x - Constants.CITY_WIDTH / 2 + 5;
+      x < city.x + Constants.CITY_WIDTH / 2 - 5;
       x += 10
     ) {
       for (let y = city.y - cityHeight + 5; y < city.y - 5; y += 10) {
@@ -528,12 +477,12 @@ function drawCities() {
 function drawGround() {
   const hillWidth = 120;
   const hillHeight = 60;
-  const groundLevel = canvas.height - GROUND_HEIGHT;
+  const groundLevel = canvas.height - Constants.GROUND_HEIGHT;
   const hillColor = "green";
 
   // Draw the base ground
   ctx.fillStyle = "green";
-  ctx.fillRect(0, groundLevel, canvas.width, GROUND_HEIGHT);
+  ctx.fillRect(0, groundLevel, canvas.width, Constants.GROUND_HEIGHT);
 
   // Draw hills with missiles
   playerLauncher.guns.forEach((gun, index) => {
